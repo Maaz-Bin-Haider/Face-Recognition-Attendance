@@ -23,3 +23,5 @@ pip install torch==2.7.1+cu118 torchvision==0.22.1+cu118 torchaudio==2.7.1+cu118
 pip install onnxruntime  
 pip install insightface
 pip install faiss-cpu
+pip uninstall opencv-python opencv-contrib-python -y
+pip install opencv-python==4.13.0.92 opencv-contrib-python==4.13.0.92

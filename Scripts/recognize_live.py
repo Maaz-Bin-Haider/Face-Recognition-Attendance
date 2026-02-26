@@ -501,11 +501,11 @@ print("="*70)
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-THRESHOLD       = 0.8
+THRESHOLD       = 1.0
 DET_SIZE        = (320, 320)
 PROCESS_EVERY_N = 3
 FRAME_SCALE     = 0.5
-CAMERA_SOURCE   = r"C:\Users\SWISS TECH\Downloads\WhatsApp Video 2026-02-26 at 1.53.27 PM.mp4"
+CAMERA_SOURCE   = r"C:\Users\SWISS TECH\Downloads\WhatsApp Video 2026-02-19 at 3.26.03 PM.mp4"
 IS_VIDEO_FILE   = not (isinstance(CAMERA_SOURCE, int) or CAMERA_SOURCE.startswith("rtsp"))
 # ─────────────────────────────────────────────
 
@@ -514,52 +514,6 @@ print("\n[1/3] Loading InsightFace...")
 face_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
 face_app.prepare(ctx_id=-1, det_size=DET_SIZE)
 print("✓ InsightFace loaded")
-
-# # 2. LOAD STUDENTS
-# print("\n[2/3] Loading students...")
-# students = []
-# students_folder = r"C:\Users\SWISS TECH\Documents\Maaz\attendence"
-# pkl_files = glob.glob(os.path.join(students_folder, "student_*.pkl"))
-
-# if not pkl_files:
-#     print("ERROR: No student .pkl files found!")
-#     exit()
-
-# for pkl_file in pkl_files:
-#     with open(pkl_file, 'rb') as f:
-#         students.append(pickle.load(f))
-
-# for student in students:
-#     if 'embeddings' in student:
-#         student['embeddings'] = [e / np.linalg.norm(e) for e in student['embeddings']]
-#         student['embeddings_matrix'] = np.array(student['embeddings'])
-#     else:
-#         student['embedding'] = student['embedding'] / np.linalg.norm(student['embedding'])
-
-# print(f"✓ Loaded {len(students)} students")
-
-# # 3. MATCHING
-# def find_match(embedding, threshold=THRESHOLD):
-#     embedding = embedding / np.linalg.norm(embedding)
-#     best_match = None
-#     best_distance = float('inf')
-
-#     for student in students:
-#         if 'embeddings_matrix' in student:
-#             diffs = student['embeddings_matrix'] - embedding
-#             distances = np.linalg.norm(diffs, axis=1)
-#             min_dist = distances.min()
-#         else:
-#             min_dist = np.linalg.norm(student['embedding'] - embedding)
-
-#         if min_dist < best_distance:
-#             best_distance = min_dist
-#             best_match = student
-
-#     if best_distance < threshold:
-#         confidence = 1 - (best_distance / 2)
-#         return best_match, confidence, best_distance
-#     return None, 0, best_distance
 
 
 

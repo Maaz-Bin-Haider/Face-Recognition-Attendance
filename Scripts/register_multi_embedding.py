@@ -90,7 +90,7 @@ import faiss
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-STUDENTS_FOLDER = r"C:\Users\SWISS TECH\Documents\Maaz\attendence"
+STUDENTS_FOLDER = r"C:\Users\SWISS TECH\Documents\Maaz\Face recognition attendance\Scripts"
 INDEX_FILE = "face_index.faiss"
 LABELS_FILE = "labels.pkl"
 # ─────────────────────────────────────────────

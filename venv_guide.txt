@@ -1,0 +1,25 @@
+✅ Correct workflow
+Step 1 — Install Python 3.10 alongside 3.14
+You can keep both installed.
+Download:
+https://www.python.org/downloads/release/python-31011/
+During install:
+	• ✔ Add to PATH
+	• ✔ Install for all users
+
+Step 2 — Create NEW venv using Python 3.10
+Go to project folder:
+
+cd C:\Users\SWISS TECH\Documents\attendence
+Create venv:
+
+py -3.10 -m venv venv
+Activate:
+
+venv\Scripts\activate
+
+
+pip install torch==2.7.1+cu118 torchvision==0.22.1+cu118 torchaudio==2.7.1+cu118 --index-url https://download.pytorch.org/whl/cu118
+pip install onnxruntime  
+pip install insightface
+pip install faiss-cpu

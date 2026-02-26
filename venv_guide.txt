@@ -18,10 +18,12 @@ Activate:
 
 venv\Scripts\activate
 
-
+python -m pip install --upgrade pip setuptools wheel
 pip install torch==2.7.1+cu118 torchvision==0.22.1+cu118 torchaudio==2.7.1+cu118 --index-url https://download.pytorch.org/whl/cu118
 pip install onnxruntime  
 pip install insightface
 pip install faiss-cpu
 pip uninstall opencv-python opencv-contrib-python -y
 pip install opencv-python==4.13.0.92 opencv-contrib-python==4.13.0.92
+pip install filterpy opencv-python scikit-learn torch torchvision
+pip install deep_sort_realtime

@@ -484,29 +484,277 @@
 
 
 
+# import cv2
+# import pickle
+# import numpy as np
+# from insightface.app import FaceAnalysis
+# import glob
+# import os
+# import threading
+# import time
+# import faiss
+
+# print("="*70)
+# print("LIVE CCTV FACE RECOGNITION - OPTIMIZED")
+# print("="*70)
+
+# # ─────────────────────────────────────────────
+# # CONFIG
+# # ─────────────────────────────────────────────
+# THRESHOLD       = 1.0
+# DET_SIZE        = (320, 320)
+# PROCESS_EVERY_N = 3
+# FRAME_SCALE     = 0.5
+# CAMERA_SOURCE   = r"C:\Users\SWISS TECH\Downloads\WhatsApp Video 2026-02-19 at 3.26.03 PM.mp4"
+# IS_VIDEO_FILE   = not (isinstance(CAMERA_SOURCE, int) or CAMERA_SOURCE.startswith("rtsp"))
+# # ─────────────────────────────────────────────
+
+# # 1. LOAD INSIGHTFACE
+# print("\n[1/3] Loading InsightFace...")
+# face_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
+# face_app.prepare(ctx_id=-1, det_size=DET_SIZE)
+# print("✓ InsightFace loaded")
+
+
+
+# # 2. LOAD FAISS INDEX
+# print("\n[2/3] Loading FAISS index...")
+
+# index = faiss.read_index("face_index.faiss")
+
+# with open("labels.pkl", "rb") as f:
+#     labels = pickle.load(f)
+
+# print(f"✓ FAISS loaded with {index.ntotal} embeddings")
+
+
+
+# def find_match(embedding):
+#     embedding = embedding / np.linalg.norm(embedding)
+#     embedding = np.expand_dims(embedding.astype('float32'), axis=0)
+
+#     distances, indices = index.search(embedding, 1)
+
+#     best_distance = distances[0][0]
+#     best_index = indices[0][0]
+
+#     if best_distance < THRESHOLD:
+#         student_id = labels[best_index]
+#         confidence = 1 - (best_distance / 2)
+
+#         return {
+#             "student_id": student_id,
+#             "name": student_id   # change later if you store real names
+#         }, confidence, best_distance
+
+#     return None, 0, best_distance
+
+# # ─────────────────────────────────────────────
+# # CAMERA STREAM
+# # For video files: respects FPS timing so playback is smooth
+# # For live camera: reads as fast as possible (no buffering lag)
+# # ─────────────────────────────────────────────
+# class CameraStream:
+#     def __init__(self, source, is_file=False):
+#         self.cap = cv2.VideoCapture(source)
+#         self.is_file = is_file
+#         self.frame = None
+#         self.running = True
+#         self.lock = threading.Lock()
+#         self.frame_available = threading.Event()
+
+#         if is_file:
+#             self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+#             self.frame_delay = 1.0 / self.fps if self.fps > 0 else 1/30
+#             print(f"✓ Video file detected — playback FPS: {self.fps:.1f}")
+#         else:
+#             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+#             print("✓ Live camera detected")
+
+#         self.thread = threading.Thread(target=self._reader, daemon=True)
+#         self.thread.start()
+
+#     def _reader(self):
+#         while self.running:
+#             t_start = time.time()
+
+#             ret, frame = self.cap.read()
+
+#             if not ret:
+#                 if self.is_file:
+#                     print("\n[Stream] End of video.")
+#                 self.running = False
+#                 break
+
+#             with self.lock:
+#                 self.frame = frame
+#             self.frame_available.set()
+
+#             # For video files: sleep to match original FPS
+#             # This prevents the thread racing ahead and dropping frames
+#             if self.is_file:
+#                 elapsed = time.time() - t_start
+#                 sleep_time = self.frame_delay - elapsed
+#                 if sleep_time > 0:
+#                     time.sleep(sleep_time)
+
+#     def read(self):
+#         # Block until a new frame is actually available
+#         self.frame_available.wait(timeout=2.0)
+#         self.frame_available.clear()
+#         with self.lock:
+#             return self.frame.copy() if self.frame is not None else None
+
+#     def is_running(self):
+#         return self.running
+
+#     def stop(self):
+#         self.running = False
+#         self.frame_available.set()  # Unblock any waiting read()
+#         self.cap.release()
+
+
+# # ─────────────────────────────────────────────
+# # INFERENCE WORKER (unchanged, runs in background thread)
+# # ─────────────────────────────────────────────
+# class InferenceWorker:
+#     def __init__(self):
+#         self.input_frame = None
+#         self.output_faces = []
+#         self.running = True
+#         self.lock = threading.Lock()
+#         self.new_frame_event = threading.Event()
+#         self.thread = threading.Thread(target=self._worker, daemon=True)
+#         self.thread.start()
+
+#     def submit(self, frame):
+#         with self.lock:
+#             self.input_frame = frame
+#         self.new_frame_event.set()
+
+#     def get_results(self):
+#         with self.lock:
+#             return list(self.output_faces)
+
+#     def _worker(self):
+#         while self.running:
+#             self.new_frame_event.wait()
+#             self.new_frame_event.clear()
+
+#             with self.lock:
+#                 frame = self.input_frame.copy() if self.input_frame is not None else None
+
+#             if frame is None:
+#                 continue
+
+#             small = cv2.resize(frame, (0, 0), fx=FRAME_SCALE, fy=FRAME_SCALE)
+#             faces = face_app.get(small)
+
+#             results = []
+#             for face in faces:
+#                 bbox = (face.bbox / FRAME_SCALE).astype(int)
+#                 x1, y1, x2, y2 = bbox
+#                 match, confidence, distance = find_match(face.embedding)
+
+#                 if match:
+#                     color = (0, 255, 0)
+#                     label = f"{match['name']} {confidence*100:.0f}%"
+#                 else:
+#                     color = (0, 0, 255)
+#                     label = f"Unknown {distance:.2f}"
+
+#                 results.append((x1, y1, x2, y2, label, color))
+
+#             with self.lock:
+#                 self.output_faces = results
+
+#     def stop(self):
+#         self.running = False
+#         self.new_frame_event.set()
+
+
+# # ─────────────────────────────────────────────
+# # MAIN LOOP
+# # ─────────────────────────────────────────────
+# print("\n[3/3] Starting stream...")
+# print("Press Q to quit\n")
+
+# stream = CameraStream(CAMERA_SOURCE, is_file=IS_VIDEO_FILE)
+# worker = InferenceWorker()
+
+# frame_count = 0
+# fps_counter = 0
+# fps_display = 0
+# fps_timer   = time.time()
+
+# time.sleep(1)  # Let camera/file warm up
+
+# while stream.is_running():
+#     frame = stream.read()
+#     if frame is None:
+#         break
+
+#     frame_count += 1
+#     fps_counter += 1
+
+#     # Submit every Nth frame for inference (non-blocking)
+#     if frame_count % PROCESS_EVERY_N == 0:
+#         worker.submit(frame)
+
+#     # Draw last known face results on current frame
+#     faces = worker.get_results()
+#     for (x1, y1, x2, y2, label, color) in faces:
+#         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+#         label_w = len(label) * 11
+#         cv2.rectangle(frame, (x1, y1 - 30), (x1 + label_w, y1), color, -1)
+#         cv2.putText(frame, label, (x1 + 4, y1 - 8),
+#                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
+
+#     # FPS overlay
+#     elapsed = time.time() - fps_timer
+#     if elapsed >= 1.0:
+#         fps_display = fps_counter / elapsed
+#         fps_counter = 0
+#         fps_timer   = time.time()
+
+#     cv2.putText(frame, f"FPS: {fps_display:.1f}", (10, 30),
+#                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+#     cv2.putText(frame, f"Faces: {len(faces)}", (10, 65),
+#                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+
+#     cv2.imshow("CCTV Face Recognition", frame)
+
+#     if cv2.waitKey(1) & 0xFF == ord('q'):
+#         break
+
+# stream.stop()
+# worker.stop()
+# cv2.destroyAllWindows()
+# print("\n✓ Done.")
+
 import cv2
 import pickle
 import numpy as np
 from insightface.app import FaceAnalysis
-import glob
-import os
 import threading
 import time
 import faiss
+from deep_sort_realtime.deepsort_tracker import DeepSort
 
-print("="*70)
-print("LIVE CCTV FACE RECOGNITION - OPTIMIZED")
-print("="*70)
+print("=" * 70)
+print("LIVE CCTV FACE RECOGNITION - OPTIMIZED WITH DEEPSORT + ARCFACE EMBEDDINGS")
+print("=" * 70)
 
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-THRESHOLD       = 1.0
-DET_SIZE        = (320, 320)
-PROCESS_EVERY_N = 3
-FRAME_SCALE     = 0.5
-CAMERA_SOURCE   = r"C:\Users\SWISS TECH\Downloads\WhatsApp Video 2026-02-19 at 3.26.03 PM.mp4"
-IS_VIDEO_FILE   = not (isinstance(CAMERA_SOURCE, int) or CAMERA_SOURCE.startswith("rtsp"))
+THRESHOLD        = 1.0
+DET_SIZE         = (320, 320)
+PROCESS_EVERY_N  = 3
+FRAME_SCALE      = 0.5
+CAMERA_SOURCE    = r"C:\Users\SWISS TECH\Downloads\WhatsApp Video 2026-02-19 at 3.26.03 PM.mp4"
+IS_VIDEO_FILE    = not (isinstance(CAMERA_SOURCE, int) or CAMERA_SOURCE.startswith("rtsp"))
+RECOG_INTERVAL   = 1.0   # seconds between re-identification per track
 # ─────────────────────────────────────────────
 
 # 1. LOAD INSIGHTFACE
@@ -515,57 +763,62 @@ face_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
 face_app.prepare(ctx_id=-1, det_size=DET_SIZE)
 print("✓ InsightFace loaded")
 
-
-
 # 2. LOAD FAISS INDEX
 print("\n[2/3] Loading FAISS index...")
-
 index = faiss.read_index("face_index.faiss")
-
 with open("labels.pkl", "rb") as f:
     labels = pickle.load(f)
-
 print(f"✓ FAISS loaded with {index.ntotal} embeddings")
 
+# 3. INIT DEEPSORT
+# embedder=None → disables internal PyTorch embedder (no pkg_resources crash)
+# IMPORTANT: when embedder=None, you MUST ALWAYS pass embeds= in update_tracks()
+#            even when the detections list is empty (pass embeds=[] in that case)
+print("\n[3/3] Initializing DeepSORT tracker...")
+tracker = DeepSort(
+    max_age=30,
+    n_init=3,
+    nms_max_overlap=1.0,
+    embedder=None,    # we supply ArcFace embeddings ourselves
+    half=False,
+    bgr=True,
+)
+print("✓ DeepSORT initialized")
 
-
+# ─────────────────────────────────────────────
+# MATCHING FUNCTION
+# ─────────────────────────────────────────────
 def find_match(embedding):
-    embedding = embedding / np.linalg.norm(embedding)
-    embedding = np.expand_dims(embedding.astype('float32'), axis=0)
-
-    distances, indices = index.search(embedding, 1)
-
+    """Search FAISS index for the closest face embedding."""
+    norm = np.linalg.norm(embedding)
+    if norm == 0:
+        return None, 0.0, float('inf')
+    embedding = (embedding / norm).astype('float32')
+    query = np.expand_dims(embedding, axis=0)
+    distances, indices = index.search(query, 1)
     best_distance = distances[0][0]
-    best_index = indices[0][0]
-
+    best_index    = indices[0][0]
     if best_distance < THRESHOLD:
         student_id = labels[best_index]
-        confidence = 1 - (best_distance / 2)
-
-        return {
-            "student_id": student_id,
-            "name": student_id   # change later if you store real names
-        }, confidence, best_distance
-
-    return None, 0, best_distance
+        confidence = 1.0 - (best_distance / 2.0)
+        return {"student_id": student_id, "name": student_id}, confidence, best_distance
+    return None, 0.0, best_distance
 
 # ─────────────────────────────────────────────
 # CAMERA STREAM
-# For video files: respects FPS timing so playback is smooth
-# For live camera: reads as fast as possible (no buffering lag)
 # ─────────────────────────────────────────────
 class CameraStream:
     def __init__(self, source, is_file=False):
-        self.cap = cv2.VideoCapture(source)
+        self.cap     = cv2.VideoCapture(source)
         self.is_file = is_file
-        self.frame = None
+        self.frame   = None
         self.running = True
-        self.lock = threading.Lock()
+        self.lock    = threading.Lock()
         self.frame_available = threading.Event()
 
         if is_file:
-            self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-            self.frame_delay = 1.0 / self.fps if self.fps > 0 else 1/30
+            self.fps         = self.cap.get(cv2.CAP_PROP_FPS)
+            self.frame_delay = 1.0 / self.fps if self.fps > 0 else 1 / 30
             print(f"✓ Video file detected — playback FPS: {self.fps:.1f}")
         else:
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -577,29 +830,22 @@ class CameraStream:
     def _reader(self):
         while self.running:
             t_start = time.time()
-
             ret, frame = self.cap.read()
-
             if not ret:
                 if self.is_file:
                     print("\n[Stream] End of video.")
                 self.running = False
                 break
-
             with self.lock:
                 self.frame = frame
             self.frame_available.set()
-
-            # For video files: sleep to match original FPS
-            # This prevents the thread racing ahead and dropping frames
             if self.is_file:
-                elapsed = time.time() - t_start
+                elapsed    = time.time() - t_start
                 sleep_time = self.frame_delay - elapsed
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 
     def read(self):
-        # Block until a new frame is actually available
         self.frame_available.wait(timeout=2.0)
         self.frame_available.clear()
         with self.lock:
@@ -610,20 +856,21 @@ class CameraStream:
 
     def stop(self):
         self.running = False
-        self.frame_available.set()  # Unblock any waiting read()
+        self.frame_available.set()
         self.cap.release()
 
-
 # ─────────────────────────────────────────────
-# INFERENCE WORKER (unchanged, runs in background thread)
+# INFERENCE WORKER
 # ─────────────────────────────────────────────
 class InferenceWorker:
     def __init__(self):
-        self.input_frame = None
-        self.output_faces = []
-        self.running = True
-        self.lock = threading.Lock()
+        self.input_frame     = None
+        self.output_faces    = []
+        self.running         = True
+        self.lock            = threading.Lock()
         self.new_frame_event = threading.Event()
+        # Per-track recognition cache: {track_id: (match, confidence, timestamp)}
+        self.track_cache     = {}
         self.thread = threading.Thread(target=self._worker, daemon=True)
         self.thread.start()
 
@@ -643,27 +890,88 @@ class InferenceWorker:
 
             with self.lock:
                 frame = self.input_frame.copy() if self.input_frame is not None else None
-
             if frame is None:
                 continue
 
+            h_fr, w_fr = frame.shape[:2]
+
+            # ── Step 1: Detect faces on downscaled frame ──────────────────────
             small = cv2.resize(frame, (0, 0), fx=FRAME_SCALE, fy=FRAME_SCALE)
             faces = face_app.get(small)
 
-            results = []
+            # ── Step 2: Build detection + embedding lists ─────────────────────
+            # DeepSORT format (when embedder=None):
+            #   raw_dets : [([left, top, w, h], confidence, detection_class), ...]
+            #              detection_class is just a label string — NOT the embedding
+            #   embeds   : [np.array(512,), ...]  passed separately via embeds= kwarg
+            #
+            # CRITICAL: len(embeds) MUST equal len(raw_dets) at all times.
+            # CRITICAL: even when raw_dets=[], you must pass embeds=[] explicitly.
+            raw_dets = []
+            embeds   = []
+
             for face in faces:
-                bbox = (face.bbox / FRAME_SCALE).astype(int)
-                x1, y1, x2, y2 = bbox
-                match, confidence, distance = find_match(face.embedding)
+                x1, y1, x2, y2 = (face.bbox / FRAME_SCALE).astype(int)
+                x1 = max(0, x1);    y1 = max(0, y1)
+                x2 = min(w_fr, x2); y2 = min(h_fr, y2)
+                w  = max(1, x2 - x1)
+                h  = max(1, y2 - y1)
+
+                conf    = float(face.det_score)
+                raw_emb = face.embedding
+                norm    = np.linalg.norm(raw_emb)
+                emb     = (raw_emb / norm).astype('float32') if norm > 0 else raw_emb.astype('float32')
+
+                # 3rd element is detection_class (string), NOT the embedding
+                raw_dets.append(([x1, y1, w, h], conf, "face"))
+                embeds.append(emb)
+
+            # ── Step 3: Update DeepSORT ───────────────────────────────────────
+            # Always pass embeds= (even as [] for empty frames) — required when embedder=None
+            tracks = tracker.update_tracks(raw_dets, embeds=embeds, frame=frame)
+
+            # ── Step 4: Recognize each confirmed track via FAISS ──────────────
+            results = []
+            now = time.time()
+
+            for track in tracks:
+                if not track.is_confirmed():
+                    continue
+
+                ltrb = track.to_ltrb()
+                x1 = max(0, int(ltrb[0]))
+                y1 = max(0, int(ltrb[1]))
+                x2 = min(w_fr, int(ltrb[2]))
+                y2 = min(h_fr, int(ltrb[3]))
+                track_id = track.track_id
+
+                # Pull latest ArcFace embedding stored by DeepSORT
+                embedding = None
+                if hasattr(track, 'features') and track.features:
+                    embedding = track.features[-1]
+
+                # Re-run FAISS only after RECOG_INTERVAL seconds per track
+                cached = self.track_cache.get(track_id)
+                if embedding is not None and (cached is None or now - cached[2] >= RECOG_INTERVAL):
+                    match, confidence, _ = find_match(embedding)
+                    self.track_cache[track_id] = (match, confidence, now)
+                elif cached is not None:
+                    match, confidence = cached[0], cached[1]
+                else:
+                    match, confidence = None, 0.0
 
                 if match:
                     color = (0, 255, 0)
-                    label = f"{match['name']} {confidence*100:.0f}%"
+                    label = f"ID{track_id} {match['name']} {confidence * 100:.0f}%"
                 else:
                     color = (0, 0, 255)
-                    label = f"Unknown {distance:.2f}"
+                    label = f"ID{track_id} Unknown"
 
                 results.append((x1, y1, x2, y2, label, color))
+
+            # Clean up stale cache entries for dead tracks
+            active_ids = {t.track_id for t in tracks}
+            self.track_cache = {k: v for k, v in self.track_cache.items() if k in active_ids}
 
             with self.lock:
                 self.output_faces = results
@@ -672,22 +980,20 @@ class InferenceWorker:
         self.running = False
         self.new_frame_event.set()
 
-
 # ─────────────────────────────────────────────
 # MAIN LOOP
 # ─────────────────────────────────────────────
-print("\n[3/3] Starting stream...")
-print("Press Q to quit\n")
+print("\n[4/4] Starting stream... Press Q to quit\n")
 
 stream = CameraStream(CAMERA_SOURCE, is_file=IS_VIDEO_FILE)
 worker = InferenceWorker()
 
 frame_count = 0
 fps_counter = 0
-fps_display = 0
+fps_display = 0.0
 fps_timer   = time.time()
 
-time.sleep(1)  # Let camera/file warm up
+time.sleep(1)  # warm-up
 
 while stream.is_running():
     frame = stream.read()
@@ -697,11 +1003,9 @@ while stream.is_running():
     frame_count += 1
     fps_counter += 1
 
-    # Submit every Nth frame for inference (non-blocking)
     if frame_count % PROCESS_EVERY_N == 0:
         worker.submit(frame)
 
-    # Draw last known face results on current frame
     faces = worker.get_results()
     for (x1, y1, x2, y2, label, color) in faces:
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
@@ -710,7 +1014,6 @@ while stream.is_running():
         cv2.putText(frame, label, (x1 + 4, y1 - 8),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
 
-    # FPS overlay
     elapsed = time.time() - fps_timer
     if elapsed >= 1.0:
         fps_display = fps_counter / elapsed
@@ -723,7 +1026,6 @@ while stream.is_running():
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
 
     cv2.imshow("CCTV Face Recognition", frame)
-
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 

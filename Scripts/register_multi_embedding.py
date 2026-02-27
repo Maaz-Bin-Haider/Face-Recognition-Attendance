@@ -102,7 +102,7 @@ student_id = input("Enter Student ID (e.g., S001): ").strip()
 student_name = input("Enter Student Name: ").strip()
 target_count = int(input("How many embeddings to collect? (recommended 100-200): ").strip())
 
-video_paths = [r"C:\Users\SWISS TECH\Downloads\WhatsApp Video 2026-02-26 at 1.40.50 PM.mp4"]
+video_paths = [r"C:\Users\SWISS TECH\Downloads\shah_muhammad.MOV"]
 
 all_embeddings = []
 
